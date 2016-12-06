@@ -3,40 +3,38 @@ import itertools
 import json
 from collections import Counter
 
-input_path = "/Users/maxwoolf/Downloads/"
-output_path = "/Users/maxwoolf/Downloads/"
+input_path = "/Users/maxwoolf/Downloads" \
+    "/HIBP Consolidated and Anonymised Data" \
+    "/HIBP Consolidated and Anonymised Data.txt"
 
 edge_list = []
-threshold = 2
 
-
-with open(output_path + 'mtg-creatures.csv', 'wb') as file:
+with open('hibp_edges.csv', 'wb') as file:
     writer = csv.writer(file)
-    writer.writerow(["Source", "Target", "Weight", "Type"])
+    writer.writerow(["Source", "Target", "Weight"])
 
-    with open(input_path + 'AllCards.json') as data:
-        cards = json.load(data)
-        names = cards.keys()
+    with open(input_path, 'rb') as f:
+        for entry in f:
+            if entry.find(';') > 0:
+                services = entry.split(' ')[0].split(';')
+                count = int(entry.split(' ')[1].rstrip())
 
-    for name in names:
-        card = cards[name]
+                services.sort()  # Ensure edges are in correct order
 
-        # Only process Creatures
-        if set(["type", "subtypes"]).issubset(card.keys()) and "Creature" in card['types']:
-            creature_types = card['subtypes']
-            creature_types.sort()  # Ensure edges are in correct order
-            # Calculate all combinations
-            edges = list(itertools.combinations(creature_types, 2))
-
-            # edges is a list of tuples
-            for edge in edges:
-                edge_list.append(edge)
+                # edges is a list of tuples
+                # edge_list is a list of tuples + count
+                edges = list(itertools.combinations(services, 2))
+                for edge in edges:
+                    edge_list.append((edge, count))
+                break
 
     # edge_counts is a (key,value) of (tuple, number)
-    edge_counts = Counter(edge_list)
+    print edge_list
+    edge_counts = reduceByKey(lambda x, y: x + y,
+                         edge_list)
+    print edge_counts
     edges = edge_counts.keys()
 
     for edge in edges:
         count = edge_counts[edge]
-        if count >= threshold:
-            writer.writerow([edge[0], edge[1], count, "Undirected"])
+        writer.writerow([edge[0], edge[1], count])
