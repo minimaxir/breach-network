@@ -76,16 +76,16 @@ df_net %>% head()
 plot <- ggplot(df_net, aes(x = x, y = y, xend = xend, yend = yend)) +
     geom_edges(aes(alpha = Weight), size=0.4) +
     geom_nodes(aes(color = as.factor(group), size = centrality)) +
-    ggtitle("Network Graph of Breaches in the HaveIBeenPwned Database") +
+    ggtitle("Network Graph of Breaches from HaveIBeenPwned Database (by @minimaxir)") +
     geom_nodelabel_repel(aes(color = as.factor(group), label = vertex.names),
                           fontface = "bold", size=1.5, box.padding = unit(0.05, "lines"),
                           label.padding= unit(0.1, "lines"), segment.size=0.1, label.size=0.2) +
     scale_alpha_continuous(range=c(0.01,1)) +
     theme_blank() +
-    guides(size=FALSE, color=FALSE, alpha=FALSE)
-    #theme(plot.title = element_text(family="Source Sans Pro"),
-    #        legend.title = element_text(family="Source Sans Pro"),
-    #        legend.text = element_text(family="Source Sans Pro"))
+    guides(size=FALSE, color=FALSE, alpha=FALSE) +
+    theme(plot.title = element_text(family="Source Sans Pro"),
+            legend.title = element_text(family="Source Sans Pro"),
+            legend.text = element_text(family="Source Sans Pro"))
 
 plot
 ```
