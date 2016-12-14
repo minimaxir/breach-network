@@ -46,7 +46,28 @@ df %>% arrange(desc(Weight)) %>% head()
 There are `r df %>% nrow()` edges.
 
 ```{r}
-net <- graph.data.frame(df, directed = T)
+df_totals <- read_csv('hibp_services.csv')
+df_totals %>% arrange(desc(Total)) %>% head()
+```
+
+There are **`r df_totals %>% select(Total) %>% sum() %>% format(big.mark=",")`** total records in the dataset. ([expected value](https://www.troyhunt.com/heres-1-4-billion-records-from-have-i-been-pwned-for-you-to-analyse/): 1,431,112,732)
+
+```{r}
+df_merged <- df %>% left_join(df_totals, by = c("Source" = "Service")) %>% left_join(df_totals, by = c("Target" = "Service"))
+
+df_merged %>% arrange(desc(Weight)) %>% tail()
+```
+
+```{r}
+df_merged <- df_merged %>% filter(Weight >= Total.x * 0.01,
+                                  Weight >= Total.y * 0.01) %>%
+                select(Source, Target, Weight)
+
+df_merged %>% arrange(desc(Weight)) %>% tail()
+```
+
+```{r}
+net <- graph.data.frame(df_merged, directed = T)
 
 V(net)$degree <- centralization.degree(net)$res
 V(net)$weighted_degree <- graph.strength(net, weights=V(net)$Weight)
@@ -59,10 +80,6 @@ V(net)$group <- membership(cluster_walktrap(net, weights=E(net)$Weight))
 V(net)$centrality <- eigen_centrality(net, weights=E(net)$Weight)$vector
 ```
 
-```{r}
-net <- igraph::delete.vertices(net, V(net)[weighted_degree < 100])
-net
-```
 
 ```{r}
 # ggnetwork sets default nodes randomly; set seed for reproducibility
@@ -74,16 +91,16 @@ df_net %>% head()
 
 ```{r}
 plot <- ggplot(df_net, aes(x = x, y = y, xend = xend, yend = yend)) +
-    geom_edges(aes(alpha = Weight), size=0.4) +
-    geom_nodes(aes(color = as.factor(group), size = centrality)) +
+    geom_edges(aes(alpha = Weight), size=0.25) +
+    geom_nodes(aes(fill = as.factor(group), size = centrality), shape = 21, color = "#1a1a1a", stroke=0.2) +
     ggtitle("Network Graph of Breaches from HaveIBeenPwned Database (by @minimaxir)") +
     geom_nodelabel_repel(aes(color = as.factor(group), label = vertex.names),
-                          fontface = "bold", size=1.5, box.padding = unit(0.05, "lines"),
+                          family = "Open Sans Condensed Bold", size=1.5, box.padding = unit(0.05, "lines"),
                           label.padding= unit(0.1, "lines"), segment.size=0.1, label.size=0.2) +
-    scale_alpha_continuous(range=c(0.01,1)) +
+    scale_alpha_continuous(range=c(0.1,1)) +
     theme_blank() +
-    guides(size=FALSE, color=FALSE, alpha=FALSE) +
-    theme(plot.title = element_text(family="Source Sans Pro"),
+    guides(size=FALSE, color=FALSE, alpha=FALSE, fill=FALSE) +
+    theme(plot.title = element_text(family="Source Sans Pro", size=10),
             legend.title = element_text(family="Source Sans Pro"),
             legend.text = element_text(family="Source Sans Pro"))
 
@@ -91,6 +108,6 @@ plot
 ```
 
 ```{r}
-ggsave("hibp.png", plot, "png", width=8, height=6, dpi=300)
+ggsave("hibp.png", plot, "png", width=6, height=4, dpi=300)
 ```
 
