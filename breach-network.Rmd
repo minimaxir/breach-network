@@ -1,7 +1,7 @@
 ---
-title: "How to Create an Interactive WebGL Network Graph Using R and Plotly"
+title: "Network Visualization of Breached Internet Services Using HaveIBeenPwned Data"
 author: "Max Woolf (@minimaxir)"
-date: "December 5th, 2016"
+date: "December 19th, 2016"
 output:
   html_notebook:
     highlight: tango
@@ -12,7 +12,7 @@ output:
     toc_float: yes
 ---
 
-This R Notebook is the complement to my blog post [How to Create an Interactive WebGL Network Graph Using R](http://minimaxir.com/2016/12/interactive-network/).
+This R Notebook is the complement to my blog post [Network Visualization of Breached Internet Services Using HaveIBeenPwned Data](http://minimaxir.com/2016/12/pwned-network/).
 
 This notebook is licensed under the MIT License. If you use the code or data visualization designs contained within this notebook, it would be greatly appreciated if proper attribution is given back to this notebook and/or myself. Thanks! :)
 
@@ -34,43 +34,71 @@ library(ggplot2)
 library(ggnetwork)
 library(plotly)
 library(htmlwidgets)
+library(RJSONIO)
 
 sessionInfo()
 ```
 
 ```{r}
 df <- read_csv('hibp_edges.csv')
-df %>% arrange(desc(Weight)) %>% head()
+df %>% arrange(desc(Weight)) %>% head() %>% print()
 ```
 
 There are `r df %>% nrow()` edges.
 
 ```{r}
 df_totals <- read_csv('hibp_services.csv')
-df_totals %>% arrange(desc(Total)) %>% head()
+df_totals %>% arrange(desc(Total)) %>% head() %>% print()
 ```
 
-There are **`r df_totals %>% select(Total) %>% sum() %>% format(big.mark=",")`** total records in the dataset. ([expected value](https://www.troyhunt.com/heres-1-4-billion-records-from-have-i-been-pwned-for-you-to-analyse/): 1,431,112,732)
+There are **`r df_totals %>% select(Total) %>% sum() %>% format(big.mark=",")`** total records in the dataset. ([expected value](https://www.troyhunt.com/heres-1-4-billion-records-from-have-i-been-pwned-for-you-to-analyse/) should ber # of records - # of records from sensitive breaches: about 1,989,141,353 - 221M = `r (1989141353 - 221*10^6) %>% format(big.mark=",")`))
+
+Combine the two dataframes together; this lets us filter the dataframes using vector operations.
 
 ```{r}
 df_merged <- df %>% left_join(df_totals, by = c("Source" = "Service")) %>% left_join(df_totals, by = c("Target" = "Service"))
 
-df_merged %>% arrange(desc(Weight)) %>% tail()
+df_merged %>% arrange(desc(Weight)) %>% tail() %>% print()
 ```
+
+Keep only edges with 1% of the proportion in both of the services it connects.
 
 ```{r}
 df_merged <- df_merged %>% filter(Weight >= Total.x * 0.01,
                                   Weight >= Total.y * 0.01) %>%
                 select(Source, Target, Weight)
 
-df_merged %>% arrange(desc(Weight)) %>% tail()
+df_merged %>% arrange(desc(Weight)) %>% tail() %>% print()
+```
+
+## Breach Data
+
+Get breach data from HaveIBeenPwned for better tooltips.
+
+```{r}
+# http://stackoverflow.com/questions/16947643/getting-imported-json-data-into-a-data-frame-in-r
+
+df_hibp <- fromJSON(content = "https://haveibeenpwned.com/api/v2/breaches")
+df_hibp <- do.call("rbind", lapply(df_hibp, as.data.frame))
+df_hibp <- df_hibp %>% select(Title, Name, Domain, BreachDate, PwnCount) %>% unique()
+
+df_hibp %>% head() %>% print()
 ```
 
 ```{r}
-net <- graph.data.frame(df_merged, directed = T)
+df_hibp <- df_hibp %>% mutate(text = paste(Title, paste(format(PwnCount, big.mark=",", trim=T), "Pwns"), format(as.Date(BreachDate), "%b %d, %Y"), sep="<br>"))
+
+df_hibp %>% select(text) %>% head() %>% print()
+```
+
+Build the graph network.
+
+```{r}
+net <- graph.data.frame(df_merged, directed = FALSE)
 
 V(net)$degree <- centralization.degree(net)$res
 V(net)$weighted_degree <- graph.strength(net, weights=V(net)$Weight)
+V(net)$text <- df_hibp$text[match(V(net)$name, df_hibp$Name)]
 
 net
 ```
@@ -80,19 +108,20 @@ V(net)$group <- membership(cluster_walktrap(net, weights=E(net)$Weight))
 V(net)$centrality <- eigen_centrality(net, weights=E(net)$Weight)$vector
 ```
 
+Build the ggnetwork.
 
 ```{r}
 # ggnetwork sets default nodes randomly; set seed for reproducibility
 set.seed(123)
 
-df_net <- ggnetwork(net, layout = "fruchtermanreingold", weights="Weight", niter=50000, arrow.gap=0)
-df_net %>% head()
+df_net <- ggnetwork(net, layout = "fruchtermanreingold", weights="Weight", niter=50000)
+df_net %>% head() %>% print()
 ```
 
 ```{r}
 plot <- ggplot(df_net, aes(x = x, y = y, xend = xend, yend = yend)) +
     geom_edges(aes(alpha = Weight), size=0.25) +
-    geom_nodes(aes(fill = as.factor(group), size = centrality), shape = 21, color = "#1a1a1a", stroke=0.2) +
+    geom_nodes(aes(fill = as.factor(group), size = degree), shape = 21, color = "#1a1a1a", stroke=0.2) +
     ggtitle("Network Graph of Breaches from HaveIBeenPwned Database (by @minimaxir)") +
     geom_nodelabel_repel(aes(color = as.factor(group), label = vertex.names),
                           family = "Open Sans Condensed Bold", size=1.5, box.padding = unit(0.05, "lines"),
@@ -100,7 +129,7 @@ plot <- ggplot(df_net, aes(x = x, y = y, xend = xend, yend = yend)) +
     scale_alpha_continuous(range=c(0.1,1)) +
     theme_blank() +
     guides(size=FALSE, color=FALSE, alpha=FALSE, fill=FALSE) +
-    theme(plot.title = element_text(family="Source Sans Pro", size=10),
+    theme(plot.title = element_text(family="Source Sans Pro", size=8, hjust=0.5),
             legend.title = element_text(family="Source Sans Pro"),
             legend.text = element_text(family="Source Sans Pro"))
 
@@ -108,6 +137,43 @@ plot
 ```
 
 ```{r}
-ggsave("hibp.png", plot, "png", width=6, height=4, dpi=300)
+ggsave("hibp.png", plot, "png", width=6, height=4.5, dpi=300)
 ```
 
+## Plotly
+
+Make a second graph for more fine-tuned parameters. (and removing `geom_nodelabel_repel`)
+
+In Plotly, `alpha` must be a factor variable due to http://stackoverflow.com/a/37498249. This introduces other bugs, so it was converted to a static value.
+
+```{r}
+plot <- ggplot(df_net, aes(x = x, y = y, xend = xend, yend = yend)) +
+    geom_edges(size=0.2, alpha=0.2) +
+    geom_nodes(aes(fill = as.factor(group), size = degree, text = text), shape = 21, color = "#1a1a1a", stroke=0.1, text=text) +
+    ggtitle("Network Graph of Breaches from HaveIBeenPwned Database (by @minimaxir)") +
+    scale_alpha_discrete(range=c(0,0.5)) +
+    scale_size_continuous(range=c(2,6)) +
+    theme_blank() +
+    theme(plot.title = element_text(family="Source Sans Pro", size=10),
+            legend.title = element_text(family="Source Sans Pro"),
+            legend.text = element_text(family="Source Sans Pro"),
+            legend.position="none")
+
+plot %>% ggplotly(tooltip="text") %>% toWebGL()
+```
+
+```{r}
+plot %>% ggplotly(tooltip="text", height=400) %>% toWebGL() %>% saveWidget("hibp-interactive.html", selfcontained=F, libdir="plotly")
+```
+
+# LICENSE
+
+The MIT License (MIT)
+
+Copyright (c) 2016 Max Woolf
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
